@@ -129,6 +129,14 @@ const Questionnaire = () => {
     }
   };
 
+  const cleanupVoice = () => {
+    
+    TTS.stop().catch(error => console.error('Failed to stop TTS:', error));
+    Voice.stop();
+    Voice.destroy().catch(error => console.error('Failed to destroy voice:', error));
+    Voice.removeAllListeners();
+  };
+
   // VOICE HANDLERS
   const onSpeechStart = (e) => {
     console.log('onSpeechStart: ', e);
@@ -895,6 +903,7 @@ const Questionnaire = () => {
         })
       );
     } else {
+      cleanupVoice();
       stopTTSAndVoice().then(
         setQStatus((q) => {
           const lastAnswerSet = new Date().getTime();
@@ -1031,6 +1040,7 @@ const Questionnaire = () => {
         })
       );
     } else {
+      cleanupVoice();
       stopTTSAndVoice().then(
         setQStatus((q) => {
           const lastAnswerSet = new Date().getTime();
