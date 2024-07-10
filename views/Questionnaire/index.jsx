@@ -127,6 +127,11 @@ const Questionnaire = () => {
     } catch (error) {
       console.log('Error stopping Voice', error);
     }
+    try {
+      await Voice.destroy();
+    } catch (error) {
+      console.log("Error destroying voice", error)
+    }
   };
 
   const cleanupVoice = () => {
@@ -1702,7 +1707,7 @@ const Questionnaire = () => {
               scans: updatedScans,
               state:
                 q.scanStep === 0
-                  ? QUESTIONNAIRE_STATES.SCAN_AI_DETECTION
+                  ? QUESTIONNAIRE_STATES.SCAN_FINGER_SELECTION
                   : q.scanStep === 1
                   ? QUESTIONNAIRE_STATES.SCAN_FINGER_SELECTION
                   : q.scanStep === 2
