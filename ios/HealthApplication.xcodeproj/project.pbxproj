@@ -504,7 +504,7 @@
 					"-ObjC",
 					"-lc++",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = org.reactjs.native.example.HealthApplicationTest1;
+				PRODUCT_BUNDLE_IDENTIFIER = org.reactjs.native.example.HealthApplicationTest;
 				PRODUCT_NAME = HealthApplication;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
@@ -532,7 +532,7 @@
 					"-ObjC",
 					"-lc++",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = org.reactjs.native.example.HealthApplicationTest1;
+				PRODUCT_BUNDLE_IDENTIFIER = org.reactjs.native.example.HealthApplicationTest;
 				PRODUCT_NAME = HealthApplication;
 				SWIFT_VERSION = 5.0;
 				VERSIONING_SYSTEM = "apple-generic";
