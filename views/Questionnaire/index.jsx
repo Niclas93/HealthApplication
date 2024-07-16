@@ -1,15 +1,20 @@
-import { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import Voice from '@react-native-voice/voice';
 import TTS from 'react-native-tts';
 import Geolocation from '@react-native-community/geolocation';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Alert, Platform } from 'react-native';
-import { View, StyleSheet, ScrollView } from 'react-native';
+import { Alert, Platform, Dimensions, StyleSheet, NativeEventEmitter, NativeModules } from 'react-native';
+import { View, ScrollView, TouchableOpacity } from 'react-native';
 import { Button, Divider, Text, LinearProgress } from '@rneui/themed';
 import QuestionService from '../../services/QuestionService';
-import { Temperature } from '../../components/Temperature';
+// import { Temperature } from '../../components/Temperature';
 import BleManager from 'react-native-ble-manager';
 import { useFocusEffect } from '@react-navigation/native';
+import { Buffer } from 'buffer';
+import { Svg, Rect } from 'react-native-svg';
+import { useBluetooth } from '../../hooks/BluetoothContext';
+
+const { width: windowWidth, height: windowHeight } = Dimensions.get('window');
 
 const Questionnaire = () => {
   const questionService = new QuestionService();
@@ -127,19 +132,6 @@ const Questionnaire = () => {
     } catch (error) {
       console.log('Error stopping Voice', error);
     }
-    try {
-      await Voice.destroy();
-    } catch (error) {
-      console.log("Error destroying voice", error)
-    }
-  };
-
-  const cleanupVoice = () => {
-    
-    TTS.stop().catch(error => console.error('Failed to stop TTS:', error));
-    Voice.stop();
-    Voice.destroy().catch(error => console.error('Failed to destroy voice:', error));
-    Voice.removeAllListeners();
   };
 
   // VOICE HANDLERS
@@ -452,6 +444,14 @@ const Questionnaire = () => {
   };
 
   // Read the scan confirmation prompt
+  const readTempScan = async () => {
+    const text = 'Say Save or press the save scan button to save the scan';
+    TTS.getInitStatus().then(() => {
+      TTS.speak(text);
+    });
+  };
+
+  // Read the scan confirmation prompt
   const readScanConfirmation = async () => {
     const text = 'Do you want to proceed with the scan?';
     const options = 'choice 1, Yes; choice 2, No;';
@@ -746,6 +746,14 @@ const Questionnaire = () => {
       return;
     }
 
+    if (qStatus.state === QUESTIONNAIRE_STATES.TEMPSCAN) {
+      if (lowercaseText.includes('save') || lowercaseText.includes('safe')) {
+        startCountdown();
+        return;
+      }
+      return;
+    }
+
     if (qStatus.state ===
         QUESTIONNAIRE_STATES.SCAN_ADDITIONAL_FINGER_SELECTION) {
       const choiceNumber = getChoiceFromSpeech(lowercaseText);
@@ -837,6 +845,10 @@ const Questionnaire = () => {
       readHandSelection();
     }
 
+    if (qStatus.state == QUESTIONNAIRE_STATES.TEMPSCAN) {
+      readTempScan();
+    }
+
     if (qStatus.state == QUESTIONNAIRE_STATES.SCAN_AI_DETECTION) {
       readAIDetection();
     }
@@ -894,6 +906,27 @@ const Questionnaire = () => {
     }
   }, [ttsState]);
 
+  // Handle scan of the proximal of the finger
+  const handleTempScan = () => {
+    stopTTSAndVoice().then(
+      setQStatus((q) => {
+        const lastAnswerSet = new Date().getTime();
+        return {
+          ...q,
+              state:
+                q.scanStep === 0
+                  ? QUESTIONNAIRE_STATES.SCAN_FINGER_SELECTION
+                  : q.scanStep === 1
+                  ? QUESTIONNAIRE_STATES.SCAN_PROXIMAL_OF_FINGER
+                  : q.scanStep === 2
+                  ? QUESTIONNAIRE_STATES.SCAN_ADDITIONAL_FINGER_SELECTION
+                  : QUESTIONNAIRE_STATES.FINISHED,
+              lastAnswerSet,
+        }
+      })
+    );
+  };
+
   // Handle scan confirmation
   const handleScanConfirmation = (choice) => {
     if (choice == 'Yes') {
@@ -932,7 +965,6 @@ const Questionnaire = () => {
           selectedHand: choice,
           scanStep: 0,
           state: QUESTIONNAIRE_STATES.TEMPSCAN,
-          // state: QUESTIONNAIRE_STATES.SCAN_AI_DETECTION,
           lastAnswerSet,
         }
       })
@@ -940,7 +972,7 @@ const Questionnaire = () => {
   };
 
   // Handle AI detection
-  const handleAIDetection = (choice) => {
+  const handleAIDetection = () => {
     stopTTSAndVoice().then(
       setQStatus((q) => {
         const lastAnswerSet = new Date().getTime();
@@ -970,13 +1002,13 @@ const Questionnaire = () => {
   };
 
   // Handle scan of the tip of the finger
-  const handleScanTipOfFinger = (choice) => {
+  const handleScanTipOfFinger = () => {
     stopTTSAndVoice().then(
       setQStatus((q) => {
         const lastAnswerSet = new Date().getTime();
         return {
           ...q,
-          scanStep: 2,
+          scanStep: 1,
           state: QUESTIONNAIRE_STATES.TEMPSCAN,
           // state: QUESTIONNAIRE_STATES.SCAN_PROXIMAL_OF_FINGER,
           lastAnswerSet,
@@ -986,13 +1018,13 @@ const Questionnaire = () => {
   };
 
   // Handle scan of the proximal of the finger
-  const handleScanProximalOfFinger = (choice) => {
+  const handleScanProximalOfFinger = () => {
     stopTTSAndVoice().then(
       setQStatus((q) => {
         const lastAnswerSet = new Date().getTime();
         return {
           ...q,
-          scanStep: 3,
+          scanStep: 2,
           state: QUESTIONNAIRE_STATES.TEMPSCAN,
           // state: QUESTIONNAIRE_STATES.SCAN_ADDITIONAL_FINGER_SELECTION,
           lastAnswerSet,
@@ -1065,6 +1097,151 @@ const Questionnaire = () => {
     const sum = flattenedData.reduce((acc, val) => acc + val, 0);
     return (sum / flattenedData.length).toFixed(2);
   };
+
+  const cleanupVoice = () => {
+    
+    TTS.stop().catch(error => console.error('Failed to stop TTS:', error));
+    Voice.stop();
+    Voice.destroy().catch(error => console.error('Failed to destroy voice:', error));
+    Voice.removeAllListeners();
+  };
+
+
+  //Temperature scan
+    const [displayData, setDisplayData] = useState([]);
+    const [buffer, setBuffer] = useState([]);
+    const [countdown, setCountdown] = useState(0);
+    const [scans, setScans] = useState([]);
+    const [shouldSave, setShouldSave] = useState(false);
+  
+    const { connectedPeripheralId, isMeasuring, toggleMeasurement, sendControlCommand, startNotification, stopNotification } = useBluetooth();
+  
+    useEffect(() => {
+      if (qStatus.state === QUESTIONNAIRE_STATES.TEMPSCAN) {
+        const startMeasurement = async () => {
+          if (!connectedPeripheralId) {
+            alert('No device is connected. Please connect to a device first.');
+            return;
+          }
+          await sendControlCommand('START');
+          await startNotification();
+          
+        };
+  
+        const stopMeasurement = async () => {
+          if (isMeasuring) {
+            await sendControlCommand('STOP');
+            await stopNotification();
+          }
+        };
+  
+        // Start measurement when the screen is focused
+        startMeasurement();
+
+        // Stop measurement when the screen is unfocused
+        return () => {
+          stopMeasurement();
+        };
+      }
+    }, [qStatus.state, connectedPeripheralId, isMeasuring, sendControlCommand, startNotification, stopNotification]);
+  
+    useEffect(() => {
+      const handleUpdateValueForCharacteristic = (data) => {
+        const receivedData = Buffer.from(data.value).toString();
+        if (receivedData === "StartNewPacket") {
+          setBuffer([]);
+        } else {
+          try {
+            const tempArray = JSON.parse(receivedData);
+            setBuffer(oldBuffer => {
+              const updatedBuffer = [...oldBuffer, tempArray];
+              if (updatedBuffer.length === 4) {
+                setDisplayData(updatedBuffer);
+                if (shouldSave) {
+                  saveScan(updatedBuffer);  // Save the latest data if shouldSave is true
+                  setShouldSave(false);
+                }
+                return [];
+              }
+              return updatedBuffer;
+            });
+          } catch (error) {
+            console.error('Error parsing temperature data:', error);
+          }
+        }
+      };
+  
+      const bleManagerEmitter = new NativeEventEmitter(NativeModules.BleManager);
+      const listener = bleManagerEmitter.addListener('BleManagerDidUpdateValueForCharacteristic', handleUpdateValueForCharacteristic);
+  
+      return () => {
+        listener.remove();
+      };
+    }, [shouldSave]);
+  
+    const getFillColor = (temp) => {
+      if (typeof temp !== 'number' || isNaN(temp)) {
+        console.error('Invalid temperature value:', temp);
+        return 'rgba(255, 255, 255, 1)';
+      }
+      const red = 255;
+      const green = Math.max(0, 255 - Math.round(temp * 8.5));
+      const alpha = Math.min(1, Math.max(0, temp / 30));
+      return `rgba(${red}, ${green}, 0, ${alpha})`;
+    };
+  
+    const startCountdown = () => {
+      setCountdown(3);
+      const interval = setInterval(() => {
+        setCountdown(prevCount => {
+          if (prevCount > 1) {
+            return prevCount - 1;
+          } else {
+            clearInterval(interval);
+            setShouldSave(true); // Set the flag to save the scan
+            setCountdown(0);
+            return 0;
+          }
+        });
+      }, 1000);
+    };
+  
+    const saveScan = (dataToSave) => {
+      console.log('Executing saveScan function');
+      if (dataToSave.length === 0) {
+        console.warn('No data to save');
+        return;
+      }
+  
+      const timestamp = new Date().toISOString();
+      let description = `${qStatus.selectedHand} Hand`; // Base description on selected hand
+  
+      if (qStatus.scanStep === 1) {
+        description += `, ${qStatus.selectedFinger} Finger Tip`;
+      } else if (qStatus.scanStep === 2) {
+        description += `, ${qStatus.selectedFinger} Finger Proximal`;
+      }
+  
+      const data = { timestamp, description, data: dataToSave };
+
+      const key = `scan-${timestamp}`;
+      AsyncStorage.setItem(key, JSON.stringify(data)).then(() => {
+        console.log('Scan and description saved:', data);
+        const updatedScans = [...scans, { ...data, key }];
+        setScans(updatedScans);
+        handleContinue(updatedScans); // Pass updated scans to handleContinue
+      }).catch(error => {
+        console.error('Failed to save the scan and description:', error);
+      });
+    };
+  
+    const handleContinue = (savedScans) => {
+      sendControlCommand('STOP');
+      handleTempScan();
+      TTS.stop();
+      Voice.stop();
+      setQStatus(q => ({ ...q, scans: savedScans }));
+    };
 
   // UI logic and rendering
 
@@ -1696,33 +1873,35 @@ const Questionnaire = () => {
 
   if (qStatus.state == QUESTIONNAIRE_STATES.TEMPSCAN) {
     return (
-      <Temperature
-        onContinue={(savedScans) => {
-          stopRecording();
-          setQStatus((q) => {
-            const updatedScans = [...q.scans, ...savedScans];
-            const lastAnswerSet = new Date().getTime();
-            return {
-              ...q,
-              scans: updatedScans,
-              state:
-                q.scanStep === 0
-                  ? QUESTIONNAIRE_STATES.SCAN_FINGER_SELECTION
-                  : q.scanStep === 1
-                  ? QUESTIONNAIRE_STATES.SCAN_FINGER_SELECTION
-                  : q.scanStep === 2
-                  ? QUESTIONNAIRE_STATES.SCAN_PROXIMAL_OF_FINGER
-                  : q.scanStep === 3
-                  ? QUESTIONNAIRE_STATES.SCAN_ADDITIONAL_FINGER_SELECTION
-                  : QUESTIONNAIRE_STATES.FINISHED,
-              lastAnswerSet,
-            };
-          });
-        }}
-        selectedHand={qStatus.selectedHand}
-        selectedFinger={qStatus.selectedFinger}
-        scanStep={qStatus.scanStep}
-      />
+      <View style={styles.container}>
+        <Text style={styles.instructionText}>Say save or press the button to save the scan</Text>
+        <View style={styles.heatmapContainer}>
+          <Svg height={windowHeight - 250} width={windowWidth - 20}>
+            {displayData.map((row, rowIndex) =>
+              row.map((value, xIndex) => (
+                <Rect
+                  key={`${rowIndex}-${xIndex}`}
+                  x={rowIndex * ((windowWidth - 20) / 4)}
+                  y={xIndex * ((windowHeight - 250) / 16)}
+                  width={(windowWidth - 20) / 4}
+                  height={(windowHeight - 250) / 16}
+                  fill={getFillColor(value)}
+                />
+              ))
+            )}
+          </Svg>
+        </View>
+        <View style={styles.buttonContainerBottom}>
+          <TouchableOpacity onPress={startCountdown} style={styles.savingButtons}>
+            <Text style={styles.buttonText}>{"Save Scan"}</Text>
+          </TouchableOpacity>
+        </View>
+        {countdown > 0 && (
+          <View style={styles.countdownContainer}>
+            <Text style={styles.countdownText}>{countdown}</Text>
+          </View>
+        )}
+      </View>
     );
   }
 
@@ -1918,6 +2097,55 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     margin: 10,
+  },
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  instructionText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginTop: 20,
+    marginHorizontal: 20,
+    textAlign: 'center',
+    paddingTop: 20,
+  },
+  buttonContainerBottom: {
+    flexDirection: 'row',
+    justifyContent: 'space-evenly',
+    width: '100%',
+    paddingHorizontal: 10,
+    paddingBottom: 50,
+  },
+  savingButtons: {
+    padding: 10,
+    backgroundColor: '#007AFF',
+    borderRadius: 5,
+    width: 150,
+  },
+  buttonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  heatmapContainer: {
+    margin: 10,
+    borderWidth: 1,
+    borderColor: '#007AFF'
+  },
+  countdownContainer: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  countdownText: {
+    fontSize: 48,
+    color: 'white',
   },
 });
 
