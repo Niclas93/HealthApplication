@@ -15,10 +15,14 @@ import { Svg, Rect } from 'react-native-svg';
 import { useBluetooth } from '../../hooks/BluetoothContext';
 
 const { width: windowWidth, height: windowHeight } = Dimensions.get('window');
+import AppleHealthKit from 'react-native-health'
+import useHealthData from '../../hooks/iOSWatchHooks';
 
 const Questionnaire = () => {
   const questionService = new QuestionService();
   const TIME_FOR_LOCK = 1500;
+
+  const steps = useHealthData();
 
   const QUESTIONNAIRE_STATES = {
     BEFORE_STARTING: 'BEFORE_STARTING',
@@ -134,6 +138,8 @@ const Questionnaire = () => {
     }
   };
 
+
+
   // VOICE HANDLERS
   const onSpeechStart = (e) => {
     console.log('onSpeechStart: ', e);
@@ -147,14 +153,14 @@ const Questionnaire = () => {
     console.log('onSpeechPartialResults: ', e);
     const milis = new Date().getTime();
     const result = e.value[0].toLowerCase();
-    // if (result.includes(VOICE_COMMANDS.PREVIOUS_QUESTION)) {
-    //   stopRecording();
-    //   goToPreviousQuestion();
-    //   console.log("Spracheingabe erfolgt")
-    // } else if (result.includes(VOICE_COMMANDS.CANCEL_QUESTIONNAIRE)) {
-    //   stopRecording();
-    //   cancelQuestionnaire();
-    // } else 
+    if (result.includes(VOICE_COMMANDS.PREVIOUS_QUESTION)) {
+      stopRecording();
+      goToPreviousQuestion();
+      console.log("Spracheingabe erfolgt")
+    } else if (result.includes(VOICE_COMMANDS.CANCEL_QUESTIONNAIRE)) {
+      cleanupVoice();
+      cancelQuestionnaire();
+    } else 
     if (result.includes(VOICE_COMMANDS.BEGIN_QUESTIONNAIRE)) {
       stopRecording();
       startQuestionnaire(); // Start the questionnaire if the voice command is recognized
@@ -287,7 +293,7 @@ const Questionnaire = () => {
   // Get external information (location and weather)
   const getExternalInformation = async () => {
     let location = {},
-      weather = {};
+      weather = {}
     try {
       location = await fetchGeoLocation();
     } catch (ex) {
@@ -304,8 +310,7 @@ const Questionnaire = () => {
     } catch (ex) {
       console.error('could not fetch weather', ex);
     }
-
-    return [location, weather];
+    return [location, weather, steps];
   };
 
   // Navigate to the previous question
@@ -382,7 +387,7 @@ const Questionnaire = () => {
   // Restart the questionnaire
   const restartQuestionnaire = async () => {
     try {
-      await stopTTSAndVoice();
+      await cleanupVoice();
     } catch (error) {
       console.error('Error stopping TTS or Voice:', error);
     }
@@ -406,7 +411,7 @@ const Questionnaire = () => {
   // Cancel the questionnaire
   const cancelQuestionnaire = async () => {
     try {
-      await stopTTSAndVoice();
+      await cleanupVoice();
     } catch (error) {
       console.error('Error stopping TTS or Voice:', error);
     }
@@ -533,7 +538,7 @@ const Questionnaire = () => {
       externalData: qStatus.externalData,
       scans: qStatus.scans,
     };
-    if (newHistory.length >= 50) {
+    if (newHistory.length >= 5) {
       Alert.alert(
         'File Limit Reached',
         'You have reached the limit of stored records. If you save this data, the oldest record will be deleted.',
@@ -723,7 +728,7 @@ const Questionnaire = () => {
       goToPreviousQuestion();
       console.log("Spracheingabe erfolgt")
     } else if (lowercaseText.includes(VOICE_COMMANDS.CANCEL_QUESTIONNAIRE)) {
-      stopRecording();
+      cleanupVoice();
       cancelQuestionnaire();
     } 
     // else if (lowercaseText.includes(VOICE_COMMANDS.BEGIN_QUESTIONNAIRE)) {
@@ -874,8 +879,7 @@ const Questionnaire = () => {
       getExternalInformation().then((information) => {
         const [location, weather] = information;
         const timestamp = new Date();
-        stopRecording();
-        stopTTSAndVoice();
+        cleanupVoice();
         setQStatus((q) => ({
           ...q,
           externalData: {
@@ -883,6 +887,7 @@ const Questionnaire = () => {
             timestampUTC: timestamp.toISOString(),
             weather: weather,
             location: location,
+            steps: steps,
           },
           state: QUESTIONNAIRE_STATES.FINISHED,
         }));
@@ -1382,7 +1387,7 @@ const Questionnaire = () => {
               fontSize: 20,
             }}
             onPress={() => {
-              stopRecording();
+              cleanupVoice();
               cancelQuestionnaire();
             }}
           />
@@ -1442,7 +1447,7 @@ const Questionnaire = () => {
             }}
             titleStyle={{ color: '#ff0000', fontSize: 20 }}
             onPress={() => {
-              stopRecording();
+              cleanupVoice();
               cancelQuestionnaire();
             }}
           />
@@ -1502,7 +1507,7 @@ const Questionnaire = () => {
             }}
             titleStyle={{ color: '#ff0000', fontSize: 20 }}
             onPress={() => {
-              stopRecording();
+              cleanupVoice();
               cancelQuestionnaire();
             }}
           />
@@ -1550,7 +1555,7 @@ const Questionnaire = () => {
             }}
             titleStyle={{ color: '#ff0000', fontSize: 20 }}
             onPress={() => {
-              stopRecording();
+              cleanupVoice();
               cancelQuestionnaire();
             }}
           />
@@ -1610,7 +1615,7 @@ const Questionnaire = () => {
             }}
             titleStyle={{ color: '#ff0000', fontSize: 20 }}
             onPress={() => {
-              stopRecording();
+              cleanupVoice();
               cancelQuestionnaire();
             }}
           />
@@ -1670,7 +1675,7 @@ const Questionnaire = () => {
             }}
             titleStyle={{ color: '#ff0000', fontSize: 20 }}
             onPress={() => {
-              stopRecording();
+              cleanupVoice();
               cancelQuestionnaire();
             }}
           />
@@ -1730,7 +1735,7 @@ const Questionnaire = () => {
             }}
             titleStyle={{ color: '#ff0000', fontSize: 20 }}
             onPress={() => {
-              stopRecording();
+              cleanupVoice();
               cancelQuestionnaire();
             }}
           />
@@ -1778,7 +1783,7 @@ const Questionnaire = () => {
             }}
             titleStyle={{ color: '#ff0000', fontSize: 20 }}
             onPress={() => {
-              stopRecording();
+              cleanupVoice();
               cancelQuestionnaire();
             }}
           />
@@ -1826,7 +1831,7 @@ const Questionnaire = () => {
             }}
             titleStyle={{ color: '#ff0000', fontSize: 20 }}
             onPress={() => {
-              stopRecording();
+              cleanupVoice();
               cancelQuestionnaire();
             }}
           />
@@ -1945,6 +1950,16 @@ const Questionnaire = () => {
                 <Text style={{ fontSize: 15 }}>
                   {' '}
                   {qStatus.externalData.weather.temperature} °F{' '}
+                </Text>
+              </Text>
+            </View>
+            <View style={{ marginBottom: 15 }}>
+              <Text style={{ fontSize: 20, color: '#4388d6' }}>
+                {' '}
+                Steps:{' '}
+                <Text style={{ fontSize: 15 }}>
+                  {' '}
+                  {qStatus.externalData.steps}{' '}
                 </Text>
               </Text>
             </View>
